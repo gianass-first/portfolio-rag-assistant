@@ -15,7 +15,6 @@ from langchain_voyageai import VoyageAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 
 load_dotenv()
 
@@ -26,6 +25,11 @@ RAG_PROMPT = """Eres un asistente que responde preguntas sobre el portafolio de 
 Responde SOLO con base en el siguiente contexto extraído de sus proyectos. Si el contexto no contiene información suficiente para responder, dilo claramente, no inventes datos.
 
 Cuando respondas, menciona de qué proyecto proviene la información.
+
+Ten en cuenta el historial de la conversación para entender preguntas de seguimiento (por ejemplo, si el usuario dice "y ese otro proyecto" o "cuéntame más sobre eso").
+
+Historial de la conversación:
+{chat_history}
 
 Contexto:
 {context}
@@ -53,6 +57,13 @@ def format_docs(docs):
     )
 
 
+def format_history(messages):
+    """Convierte el historial de mensajes (lista de dicts role/content) en texto plano."""
+    if not messages:
+        return "(sin mensajes previos)"
+    return "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+
+
 def build_rag_chain():
     """Construye la chain completa (retriever | prompt | llm | output_parser)."""
     retriever = load_retriever()
@@ -60,7 +71,11 @@ def build_rag_chain():
     prompt = ChatPromptTemplate.from_template(RAG_PROMPT)
 
     chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+        {
+            "context": (lambda x: x["question"]) | retriever | format_docs,
+            "question": lambda x: x["question"],
+            "chat_history": lambda x: format_history(x.get("chat_history", [])),
+        }
         | prompt
         | llm
         | StrOutputParser()
@@ -68,10 +83,10 @@ def build_rag_chain():
     return chain
 
 
-def ask(question: str) -> str:
-    """Punto de entrada: recibe una pregunta, devuelve la respuesta del RAG."""
+def ask(question: str, chat_history: list = None) -> str:
+    """Punto de entrada: recibe una pregunta y opcionalmente el historial previo."""
     chain = build_rag_chain()
-    return chain.invoke(question)
+    return chain.invoke({"question": question, "chat_history": chat_history or []})
 
 
 if __name__ == "__main__":
