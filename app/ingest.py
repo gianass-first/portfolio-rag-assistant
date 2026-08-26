@@ -5,16 +5,16 @@ Objetivo: cargar los README/notas de mis proyectos (data/portfolio_docs/),
 dividirlos en chunks, generar embeddings y guardarlos en un vector store (Chroma).
 
 Corresponde al módulo de "Core Components de LangChain" del curso de LangChain Academy.
-
-TODO (a medida que avance en el curso):
-1. Cargar documentos desde data/portfolio_docs/ con un DocumentLoader de LangChain.
-2. Dividir el texto en chunks con un TextSplitter (ej. RecursiveCharacterTextSplitter).
-3. Generar embeddings (OpenAIEmbeddings o alternativa).
-4. Persistir los chunks + embeddings en Chroma (CHROMA_PERSIST_DIR en .env).
 """
 
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
+from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_voyageai import VoyageAIEmbeddings
+from langchain_chroma import Chroma
 
 load_dotenv()
 
@@ -23,18 +23,40 @@ PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_store")
 
 
 def load_documents():
-    """TODO: cargar todos los archivos .md/.txt de DOCS_PATH."""
-    raise NotImplementedError
+    """Carga todos los archivos .md de DOCS_PATH como Documents de LangChain."""
+    loader = DirectoryLoader(
+        DOCS_PATH,
+        glob="**/*.md",
+        loader_cls=TextLoader,
+        loader_kwargs={"encoding": "utf-8"},
+    )
+    documents = loader.load()
+    print(f"Cargados {len(documents)} documentos desde {DOCS_PATH}")
+    return documents
 
 
 def split_documents(documents):
-    """TODO: dividir documentos en chunks manejables."""
-    raise NotImplementedError
+    """Divide los documentos en chunks manejables para embeddings."""
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=800,
+        chunk_overlap=100,
+        separators=["\n## ", "\n### ", "\n\n", "\n", " ", ""],
+    )
+    chunks = splitter.split_documents(documents)
+    print(f"Generados {len(chunks)} chunks a partir de {len(documents)} documentos")
+    return chunks
 
 
 def build_vector_store(chunks):
-    """TODO: generar embeddings e indexar en Chroma, persistiendo en PERSIST_DIR."""
-    raise NotImplementedError
+    """Genera embeddings con Voyage AI e indexa en Chroma, persistiendo en PERSIST_DIR."""
+    embeddings = VoyageAIEmbeddings(model="voyage-3.5")
+
+    vector_store = Chroma.from_documents(
+        documents=chunks,
+        embedding=embeddings,
+        persist_directory=PERSIST_DIR,
+    )
+    return vector_store
 
 
 if __name__ == "__main__":
